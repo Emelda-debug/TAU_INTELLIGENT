@@ -6,7 +6,7 @@ import os
 
 # Set your OpenAI API key
 client = OpenAI(
-api_key = 'sk-proj-8eXnXyT8ceNk1NCCLCPiT3BlbkFJI6kL5KEpDvMi3eZD9cjn'
+api_key = '********************'
 )
 
 # Your text data
