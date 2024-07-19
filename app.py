@@ -24,14 +24,14 @@ client = Client(account_sid, auth_token)
 
 # Updating the webhook URL for the phone
 phone_number_sid = os.getenv("my_phone_number_sid")
-webhook_url = "https://e6b8-2c0f-2a80-1231-3410-e427-f159-2198-d5f6.ngrok-free.app/ivr"
+webhook_url = "https://e378-2a07-23c0-9-2000-00-3c8b.ngrok-free.app/ivr"
 phone_number = client.incoming_phone_numbers(phone_number_sid).fetch()
 phone_number.update(voice_url=webhook_url, voice_method='POST')
 
 # OpenAI API key
 openai_client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
-    )
+)
 
 embeddings_path = "emdeddings_dataset.csv"
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -39,7 +39,6 @@ GPT_MODEL = "gpt-3.5-turbo"
 df = pd.read_csv(embeddings_path)
 df['embedding'] = df['embedding'].apply(ast.literal_eval)
 
-# search function
 def strings_ranked_by_relatedness(
     query: str,
     df: pd.DataFrame,
@@ -66,7 +65,12 @@ def query_message(
     query: str, df: pd.DataFrame, model: str, token_budget: int
 ) -> str:
     strings, relatednesses = strings_ranked_by_relatedness(query, df)
-    introduction = 'Use the below information from the Star International. Answer as a virtual assistance for the company. Try your best to answer all the questions using the provided information. If the answer cannot be found in the info, write "I could not find a satisfactory answer for your question. Please, contact our number, on +263 7780404973 or visit our website (www.starinternational.co.zw) for more information."'
+    
+    # Log ranked strings and relatedness scores
+    app.logger.info(f"Ranked strings: {strings}")
+    app.logger.info(f"Relatedness scores: {relatednesses}")
+
+    introduction = 'Use the below information from the Star International. Answer as a virtual assistance for the company. Try your best to answer all the questions using the provided information. If the answer cannot be found in the info, write "I could not find a satisfactory answer for your question. Please, contact our number, on 0 7 7 8 0 4 0 4 9 7 3 or visit our website (www.starinternational.co.zw) for more information."'
     question = f"\n\nQuestion: {query}"
     message = introduction
     for string in strings:
@@ -75,7 +79,13 @@ def query_message(
             break
         else:
             message += next_article
-    return message + question
+    
+    final_message = message + question
+    
+    # Log the final constructed message
+    app.logger.info(f"Constructed message: {final_message}")
+
+    return final_message
 
 def ask(
     query: str, df: pd.DataFrame = df,
@@ -90,14 +100,18 @@ def ask(
     ]
     response = openai_client.chat.completions.create(model=model, messages=messages, temperature=0)
     response_message = response.choices[0].message.content
+    
+    # Log the response from OpenAI
+    app.logger.info(f"Response from OpenAI: {response_message}")
+    
     return response_message
 
 # Counter to track the number of interactions
 interaction_counter = 0
 
 # Allowed maximum number of interactions before ending the call
-MAX_INTERACTIONS = 3
-USER_PHONE_NUMBER = "+263718240384"
+MAX_INTERACTIONS = 15
+USER_PHONE_NUMBER = "+263773344079"
 
 @app.route('/', methods=['GET'])
 def home():
@@ -109,16 +123,31 @@ def handle_ivr():
     response = VoiceResponse()
     speech_input = request.values.get('SpeechResult', '').lower()
     
+    # Log the captured speech input
+    app.logger.info(f"Captured Speech Input: {speech_input}")
+
+    # Greeting message
+    if interaction_counter == 0:
+        response.say("Hi, this is Tau from Star International, how can I help you today?", voice='Polly.Gregory-Neural')
+        # Prompt the caller to respond
+        response.gather(input='speech', timeout=3, speechTimeout='auto', action='/ivr')
+        interaction_counter += 1
+        return str(response)
+
     # Use the ask function to get the response from the NLP model
     response_text = ask(speech_input, df)
-    
+
+    # Log the response from OpenAI
+    app.logger.info(f"Response from OpenAI: {response_text}")
+
     # Convert text to speech using Twilio's TTS
-    response.say(response_text, voice='alice')
+    response.say(response_text, voice='Polly.Gregory-Neural')
     interaction_counter += 1
     
     # Checking if the maximum number of interactions has been reached
     if interaction_counter >= MAX_INTERACTIONS:
         response.hangup()
+        interaction_counter = 0  # Reset counter after call ends
     else:
         # Continuing the IVR flow
         response.gather(input='speech', timeout=3, speechTimeout='auto', action='/ivr')
@@ -129,8 +158,22 @@ def handle_ivr():
 def call_user():
     try:
         call = client.calls.create(
-            url=webhook_url, to=USER_PHONE_NUMBER, from_='+15017991650'
+            url=webhook_url, to=USER_PHONE_NUMBER, from_='+16467590558'
         )
+
+        # Logging call initiation
+        app.logger.info(f"Call initiated. Call SID: {call.sid}")
+        
+        # Creating a new VoiceResponse for the call initiation
+        call_response = VoiceResponse()
+        
+        # Greeting message when the call is initiated
+        call_response.say("Hi, this is Tau from Star International, how are you doing today?", voice='Polly.Gregory-Neural')
+        
+        # Follow-up question
+        call_response.say("Great!S I just wanted to ask. Do you have any loads for us?", voice='Polly.Gregory-Neural')
+        
+        # Return the response
         return jsonify({"message": "Call initiated", "call_sid": call.sid}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
