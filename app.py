@@ -10,6 +10,8 @@ from twilio.rest import Client
 import tiktoken
 from openai import OpenAI
 from dotenv import load_dotenv
+from twilio.twiml.messaging_response import MessagingResponse
+
 
 load_dotenv()
 
@@ -24,9 +26,18 @@ client = Client(account_sid, auth_token)
 
 # Updating the webhook URL for the phone
 phone_number_sid = os.getenv("my_phone_number_sid")
-webhook_url = "https://e378-2a07-23c0-9-2000-00-3c8b.ngrok-free.app/ivr"
+webhook_url = "https://9d80-2a0d-5600-44-4000-00-9fb.ngrok-free.app/ivr"
 phone_number = client.incoming_phone_numbers(phone_number_sid).fetch()
 phone_number.update(voice_url=webhook_url, voice_method='POST')
+
+
+# Whatsapp credentials
+whatsapp_number = "whatsapp:+14155238886"
+whatsapp_account_sid = os.getenv("whatsapp_sid")
+whatsapp_auth_token = os.getenv("whatsapp_auth")
+whatsapp_client = Client(whatsapp_account_sid, whatsapp_auth_token)
+WHATSAPP_USER_PHONE_NUMBER = "whatsapp:+263773344079"
+
 
 # OpenAI API key
 openai_client = OpenAI(
@@ -95,7 +106,7 @@ def ask(
     if print_message:
         print(message)
     messages = [
-        {"role": "system", "content": "You answer questions about Star International."},
+        {"role": "system", "content": "You answer questions about Star International and persuade customers to use the transporting services. Be friendly and empathetic."},
         {"role": "user", "content": message},
     ]
     response = openai_client.chat.completions.create(model=model, messages=messages, temperature=0)
@@ -128,7 +139,7 @@ def handle_ivr():
 
     # Greeting message
     if interaction_counter == 0:
-        response.say("Hi, this is Tau from Star International, how can I help you today?", voice='Polly.Gregory-Neural')
+        response.say("Hi, this is Tau from Star International. How can I help you today?", voice='Polly.Gregory-Neural')
         # Prompt the caller to respond
         response.gather(input='speech', timeout=3, speechTimeout='auto', action='/ivr')
         interaction_counter += 1
@@ -146,10 +157,12 @@ def handle_ivr():
     
     # Checking if the maximum number of interactions has been reached
     if interaction_counter >= MAX_INTERACTIONS:
+        response.say("Thank you for calling Star International. Have a great day!")
         response.hangup()
         interaction_counter = 0  # Reset counter after call ends
     else:
-        # Continuing the IVR flow
+        # Follow-up marketing question
+        response.say("By the way, do you have any loads for us to carry?", voice='Polly.Gregory-Neural')
         response.gather(input='speech', timeout=3, speechTimeout='auto', action='/ivr')
     
     return str(response)
@@ -177,6 +190,51 @@ def call_user():
         return jsonify({"message": "Call initiated", "call_sid": call.sid}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+@app.route('/send-whatsapp', methods=['POST'])
+def send_whatsapp():
+    try:
+        message = client.messages.create(
+            body="Hi, this is Tau from Star International. How are you doing today?",
+            from_=whatsapp_number,
+            to=WHATSAPP_USER_PHONE_NUMBER
+        )
+
+        # Logging WhatsApp message initiation
+        app.logger.info(f"WhatsApp message sent. Message SID: {message.sid}")
+        
+        return jsonify({"message": "WhatsApp message sent", "message_sid": message.sid}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/whatsapp', methods=['POST'])
+def handle_whatsapp():
+    incoming_msg = request.values.get('Body', '').lower()
+    response = MessagingResponse()
+    message = response.message()
+    
+    # Log the incoming WhatsApp message
+    app.logger.info(f"Incoming WhatsApp message: {incoming_msg}")
+
+    # Use the ask function to get the response from the NLP model
+    response_text = ask(incoming_msg, df)
+
+    # Log the response from OpenAI
+    app.logger.info(f"Response from OpenAI: {response_text}")
+
+    # Send the response back to the user on WhatsApp
+    message.body(response_text)
+    
+    # Follow-up marketing message
+    message.body("By the way, do you have any loads for us to carry?")
+    
+    return str(response)
+
 
 if __name__ == '__main__':
     app.run(port=8000, debug=True)
+
+
+
+
+
