@@ -5,9 +5,12 @@ import os
 import pandas as pd
 import re
 import tiktoken
+from dotenv import load_dotenv
+
+load_dotenv()
 
 client = OpenAI(
-  api_key= os.getenv("Openai_key")
+  api_key= os.getenv("OPENAI_API_KEY")
 )
 
 def read_text_document(file_path):
